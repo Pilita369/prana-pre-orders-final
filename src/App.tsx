@@ -18,7 +18,6 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-// Redirect según rol
 const IndexRedirect = () => {
   const { role, loading, session } = useAuth();
   if (loading) return (
@@ -32,7 +31,6 @@ const IndexRedirect = () => {
   return <Navigate to="/pedido/nuevo" replace />;
 };
 
-// Ruta protegida
 const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles: string[] }) => {
   const { role, loading, session } = useAuth();
   if (loading) return (
@@ -50,39 +48,6 @@ const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles:
   return <>{children}</>;
 };
 
-const AppRoutes = () => (
-  <>
-    <Navbar />
-    <Routes>
-      <Route path="/" element={<IndexRedirect />} />
-      <Route path="/menu" element={<MenuPage />} />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/registro" element={<RegistroPage />} />
-      <Route path="/pedido/nuevo" element={
-        <ProtectedRoute roles={['cliente']}>
-          <NuevoPedidoPage />
-        </ProtectedRoute>
-      } />
-      <Route path="/pedido/historial" element={
-        <ProtectedRoute roles={['cliente']}>
-          <HistorialPage />
-        </ProtectedRoute>
-      } />
-      <Route path="/admin" element={
-        <ProtectedRoute roles={['admin', 'superadmin']}>
-          <AdminPage />
-        </ProtectedRoute>
-      } />
-      <Route path="/superadmin" element={
-        <ProtectedRoute roles={['superadmin']}>
-          <SuperadminPage />
-        </ProtectedRoute>
-      } />
-      <Route path="*" element={<NotFound />} />
-    </Routes>
-  </>
-);
-
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -90,7 +55,34 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <AppProvider>
-            <AppRoutes />
+            <Navbar />
+            <Routes>
+              <Route path="/" element={<IndexRedirect />} />
+              <Route path="/menu" element={<MenuPage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/registro" element={<RegistroPage />} />
+              <Route path="/pedido/nuevo" element={
+                <ProtectedRoute roles={['cliente']}>
+                  <NuevoPedidoPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/pedido/historial" element={
+                <ProtectedRoute roles={['cliente']}>
+                  <HistorialPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/admin" element={
+                <ProtectedRoute roles={['admin', 'superadmin']}>
+                  <AdminPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/superadmin" element={
+                <ProtectedRoute roles={['superadmin']}>
+                  <SuperadminPage />
+                </ProtectedRoute>
+              } />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
           </AppProvider>
         </AuthProvider>
       </BrowserRouter>

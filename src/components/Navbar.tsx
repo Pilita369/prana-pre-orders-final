@@ -1,17 +1,17 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
-import logo from '@/assets/logo-cuchara.png';
+import logo from '@/assets/logo_cuchara.webp';
 import { LogOut, Menu, X } from 'lucide-react';
 import { useState } from 'react';
 
 const Navbar = () => {
-  const { auth } = useApp();
+  const { isLoggedIn, role, logout } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
-  const handleLogout = () => {
-    auth.logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/menu');
     setOpen(false);
   };
@@ -29,12 +29,11 @@ const Navbar = () => {
         </button>
 
         <div className={`${open ? 'flex' : 'hidden'} md:flex absolute md:static top-full left-0 right-0 bg-card md:bg-transparent flex-col md:flex-row items-center gap-3 p-4 md:p-0 border-b md:border-0 shadow-md md:shadow-none`}>
-
-          <Link to="/menu" className="text-sm font-semibold text-foreground hover:text-primary transition-colors" onClick={() => setOpen(false)}>
+          <Link to="/menu" className="text-sm font-semibold hover:text-primary transition-colors" onClick={() => setOpen(false)}>
             Menú
           </Link>
 
-          {!auth.isLoggedIn && (
+          {!isLoggedIn && (
             <>
               <Link to="/login" onClick={() => setOpen(false)}>
                 <Button variant="outline" size="sm">Iniciar sesión</Button>
@@ -45,35 +44,35 @@ const Navbar = () => {
             </>
           )}
 
-          {auth.isLoggedIn && auth.role === 'cliente' && (
+          {isLoggedIn && role === 'cliente' && (
             <>
-              <Link to="/pedido/nuevo" className="text-sm font-semibold text-foreground hover:text-primary transition-colors" onClick={() => setOpen(false)}>
+              <Link to="/pedido/nuevo" className="text-sm font-semibold hover:text-primary transition-colors" onClick={() => setOpen(false)}>
                 Nuevo pedido
               </Link>
-              <Link to="/pedido/historial" className="text-sm font-semibold text-foreground hover:text-primary transition-colors" onClick={() => setOpen(false)}>
+              <Link to="/pedido/historial" className="text-sm font-semibold hover:text-primary transition-colors" onClick={() => setOpen(false)}>
                 Mis pedidos
               </Link>
             </>
           )}
 
-          {auth.isLoggedIn && auth.role === 'admin' && (
-            <Link to="/admin" className="text-sm font-semibold text-foreground hover:text-primary transition-colors" onClick={() => setOpen(false)}>
+          {isLoggedIn && role === 'admin' && (
+            <Link to="/admin" className="text-sm font-semibold hover:text-primary transition-colors" onClick={() => setOpen(false)}>
               Panel Admin
             </Link>
           )}
 
-          {auth.isLoggedIn && auth.role === 'superadmin' && (
+          {isLoggedIn && role === 'superadmin' && (
             <>
-              <Link to="/admin" className="text-sm font-semibold text-foreground hover:text-primary transition-colors" onClick={() => setOpen(false)}>
+              <Link to="/admin" className="text-sm font-semibold hover:text-primary transition-colors" onClick={() => setOpen(false)}>
                 Panel Admin
               </Link>
-              <Link to="/superadmin" className="text-sm font-semibold text-foreground hover:text-primary transition-colors" onClick={() => setOpen(false)}>
+              <Link to="/superadmin" className="text-sm font-semibold hover:text-primary transition-colors" onClick={() => setOpen(false)}>
                 Superadmin
               </Link>
             </>
           )}
 
-          {auth.isLoggedIn && (
+          {isLoggedIn && (
             <Button variant="ghost" size="sm" onClick={handleLogout}>
               <LogOut className="h-4 w-4 mr-1" /> Salir
             </Button>
