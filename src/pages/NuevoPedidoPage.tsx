@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/hooks/useAuth';
 import { useApp } from '@/context/AppContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,20 +11,22 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
-import { Pedido, PedidoItem } from '@/lib/types';
-import { Minus, Plus, Send, MessageCircle } from 'lucide-react';
+import { Minus, Plus, Send, MessageCircle, Loader2 } from 'lucide-react';
+import { Pedido } from '@/lib/types';
 
 const NuevoPedidoPage = () => {
-  const { auth, menuItems, pedidos, setPedidos, config } = useApp();
+  const { cliente, role } = useAuth();
+  const { menuItems, config, refetchPedidos } = useApp();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const items = menuItems.filter(i => i.activo);
 
+  const items = menuItems.filter(i => i.activo);
   const [cantidades, setCantidades] = useState<Record<string, number>>({});
   const [metodoPago, setMetodoPago] = useState<'efectivo' | 'transferencia'>('efectivo');
   const [necesitaEnvio, setNecesitaEnvio] = useState(false);
-  const [direccion, setDireccion] = useState(auth.cliente?.direccion_default || '');
+  const [direccion, setDireccion] = useState(cliente?.direccion_default || '');
   const [comentarios, setComentarios] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [pedidoConfirmado, setPedidoConfirmado] = useState<Pedido | null>(null);
 
   const setCant = (id: string, delta: number) => {
@@ -38,24 +42,54 @@ const NuevoPedidoPage = () => {
     return s + (item ? item.precio * qty : 0);
   }, 0);
 
-  const handleConfirmar = () => {
+  const handleConfirmar = async () => {
+    if (!cliente) return;
     if (totalItems === 0) { toast({ title: 'Agregá al menos una vianda', variant: 'destructive' }); return; }
     if (necesitaEnvio && !direccion.trim()) { toast({ title: 'Ingresá la dirección de envío', variant: 'destructive' }); return; }
 
-    const pedidoItems: PedidoItem[] = Object.entries(cantidades)
+    setSubmitting(true);
+
+    const { data: pedido, error: pedidoError } = await supabase
+      .from('prana_pedidos')
+      .insert({
+        cliente_id: cliente.id,
+        total,
+        metodo_pago: metodoPago,
+        necesita_envio: necesitaEnvio,
+        direccion_envio: necesitaEnvio ? direccion : null,
+        comentarios: comentarios || null,
+        estado: 'pendiente',
+      })
+      .select('id')
+      .single();
+
+    if (pedidoError || !pedido) {
+      toast({ title: 'Error al crear el pedido', variant: 'destructive' });
+      setSubmitting(false);
+      return;
+    }
+
+    const pedidoItems = Object.entries(cantidades)
       .filter(([, q]) => q > 0)
       .map(([id, q]) => ({
-        id: `pi${Date.now()}${id}`,
-        pedido_id: '',
+        pedido_id: pedido.id,
         menu_item_id: id,
         cantidad: q,
         precio_unitario: items.find(i => i.id === id)!.precio,
-        menu_item: items.find(i => i.id === id),
       }));
 
-    const nuevoPedido: Pedido = {
-      id: `p${Date.now()}`,
-      cliente_id: auth.cliente?.id || '',
+    const { error: itemsError } = await supabase.from('prana_pedido_items').insert(pedidoItems);
+    if (itemsError) {
+      toast({ title: 'Error al guardar los items', variant: 'destructive' });
+      setSubmitting(false);
+      return;
+    }
+
+    await refetchPedidos();
+
+    const pedidoParaMostrar: Pedido = {
+      id: pedido.id,
+      cliente_id: cliente.id,
       total,
       metodo_pago: metodoPago,
       necesita_envio: necesitaEnvio,
@@ -63,13 +97,21 @@ const NuevoPedidoPage = () => {
       comentarios: comentarios || undefined,
       estado: 'pendiente',
       fecha_pedido: new Date().toISOString(),
-      items: pedidoItems,
-      cliente: auth.cliente || undefined,
+      items: Object.entries(cantidades)
+        .filter(([, q]) => q > 0)
+        .map(([id, q]) => ({
+          id: '',
+          pedido_id: pedido.id,
+          menu_item_id: id,
+          cantidad: q,
+          precio_unitario: items.find(i => i.id === id)!.precio,
+          menu_item: items.find(i => i.id === id),
+        })),
+      cliente,
     };
 
-    setPedidos(prev => [nuevoPedido, ...prev]);
-    setPedidoConfirmado(nuevoPedido);
-    toast({ title: '¡Pedido confirmado! 🎉' });
+    setPedidoConfirmado(pedidoParaMostrar);
+    setSubmitting(false);
   };
 
   const buildWhatsappMsg = (p: Pedido) => {
@@ -81,11 +123,6 @@ const NuevoPedidoPage = () => {
     return encodeURIComponent(msg);
   };
 
-  if (!auth.isLoggedIn || auth.role !== 'cliente') {
-    navigate('/login');
-    return null;
-  }
-
   if (pedidoConfirmado) {
     return (
       <div className="container mx-auto px-4 py-8 max-w-lg">
@@ -95,8 +132,8 @@ const NuevoPedidoPage = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              {pedidoConfirmado.items.map(i => (
-                <div key={i.id} className="flex justify-between text-sm">
+              {pedidoConfirmado.items.map((i, idx) => (
+                <div key={idx} className="flex justify-between text-sm">
                   <span>{i.cantidad}x {i.menu_item?.nombre}</span>
                   <span className="font-semibold">${(i.cantidad * i.precio_unitario).toLocaleString('es-AR')}</span>
                 </div>
@@ -120,7 +157,7 @@ const NuevoPedidoPage = () => {
               rel="noopener noreferrer"
               className="block"
             >
-              <Button className="w-full gap-2 bg-primary hover:bg-primary/90 text-primary-foreground">
+              <Button className="w-full gap-2">
                 <MessageCircle className="h-5 w-5" /> Enviar pedido por WhatsApp
               </Button>
             </a>
@@ -169,7 +206,7 @@ const NuevoPedidoPage = () => {
             <CardContent className="p-4 space-y-4">
               <div>
                 <Label className="text-base font-semibold">Método de pago</Label>
-                <RadioGroup value={metodoPago} onValueChange={(v) => setMetodoPago(v as 'efectivo' | 'transferencia')} className="flex gap-4 mt-2">
+                <RadioGroup value={metodoPago} onValueChange={v => setMetodoPago(v as any)} className="flex gap-4 mt-2">
                   <div className="flex items-center gap-2">
                     <RadioGroupItem value="efectivo" id="efectivo" />
                     <Label htmlFor="efectivo">Efectivo</Label>
@@ -205,8 +242,9 @@ const NuevoPedidoPage = () => {
               <p className="text-sm text-muted-foreground">{totalItems} vianda{totalItems > 1 ? 's' : ''}</p>
               <p className="text-2xl font-bold text-accent">${total.toLocaleString('es-AR')}</p>
             </div>
-            <Button size="lg" className="gap-2" onClick={handleConfirmar}>
-              <Send className="h-5 w-5" /> Confirmar pedido
+            <Button size="lg" className="gap-2" onClick={handleConfirmar} disabled={submitting}>
+              {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+              Confirmar pedido
             </Button>
           </div>
         </div>

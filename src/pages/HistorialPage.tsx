@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Pencil, Minus, Plus, Truck } from 'lucide-react';
+import { Pencil, Minus, Plus, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Pedido } from '@/lib/types';
 
@@ -22,32 +24,27 @@ const estadoColor: Record<string, string> = {
 };
 
 const estadoLabel: Record<string, string> = {
-  pendiente: 'Pendiente',
-  en_preparacion: 'En preparación',
-  listo: 'Listo',
-  entregado: 'Entregado',
+  pendiente: 'Pendiente', en_preparacion: 'En preparación', listo: 'Listo', entregado: 'Entregado',
 };
 
 const HistorialPage = () => {
-  const { auth, pedidos, setPedidos, menuItems } = useApp();
+  const { pedidos, menuItems, refetchPedidos } = useApp();
+  const { cliente } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Estado del editor
   const [pedidoEditando, setPedidoEditando] = useState<Pedido | null>(null);
   const [cantidades, setCantidades] = useState<Record<string, number>>({});
   const [metodoPago, setMetodoPago] = useState<'efectivo' | 'transferencia'>('efectivo');
   const [necesitaEnvio, setNecesitaEnvio] = useState(false);
   const [direccion, setDireccion] = useState('');
   const [comentarios, setComentarios] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  if (!auth.isLoggedIn) { navigate('/login'); return null; }
-
-  const misPedidos = pedidos.filter(p => p.cliente_id === auth.cliente?.id);
+  const misPedidos = pedidos.filter(p => p.cliente_id === cliente?.id);
   const itemsActivos = menuItems.filter(i => i.activo);
 
   const abrirEditor = (p: Pedido) => {
-    // Cargar los valores actuales del pedido en el form
     const cants: Record<string, number> = {};
     p.items.forEach(i => { cants[i.menu_item_id] = i.cantidad; });
     setCantidades(cants);
@@ -59,10 +56,7 @@ const HistorialPage = () => {
   };
 
   const setCant = (id: string, delta: number) => {
-    setCantidades(prev => {
-      const v = Math.max(0, (prev[id] || 0) + delta);
-      return { ...prev, [id]: v };
-    });
+    setCantidades(prev => ({ ...prev, [id]: Math.max(0, (prev[id] || 0) + delta) }));
   };
 
   const totalItems = Object.values(cantidades).reduce((s, v) => s + v, 0);
@@ -71,43 +65,37 @@ const HistorialPage = () => {
     return s + (item ? item.precio * qty : 0);
   }, 0);
 
-  const guardarEdicion = () => {
-    if (!pedidoEditando) return;
-    if (totalItems === 0) {
-      toast({ title: 'Agregá al menos una vianda', variant: 'destructive' });
-      return;
-    }
+  const guardarEdicion = async () => {
+    if (!pedidoEditando || totalItems === 0) return;
     if (necesitaEnvio && !direccion.trim()) {
       toast({ title: 'Ingresá la dirección de envío', variant: 'destructive' });
       return;
     }
+    setSaving(true);
+
+    await supabase.from('prana_pedidos').update({
+      total: totalCalc,
+      metodo_pago: metodoPago,
+      necesita_envio: necesitaEnvio,
+      direccion_envio: necesitaEnvio ? direccion : null,
+      comentarios: comentarios || null,
+    }).eq('id', pedidoEditando.id);
+
+    await supabase.from('prana_pedido_items').delete().eq('pedido_id', pedidoEditando.id);
 
     const nuevosItems = Object.entries(cantidades)
       .filter(([, q]) => q > 0)
       .map(([id, q]) => ({
-        id: `pi${Date.now()}${id}`,
         pedido_id: pedidoEditando.id,
         menu_item_id: id,
         cantidad: q,
         precio_unitario: itemsActivos.find(i => i.id === id)!.precio,
-        menu_item: itemsActivos.find(i => i.id === id),
       }));
 
-    setPedidos(prev => prev.map(p =>
-      p.id === pedidoEditando.id
-        ? {
-            ...p,
-            items: nuevosItems,
-            total: totalCalc,
-            metodo_pago: metodoPago,
-            necesita_envio: necesitaEnvio,
-            direccion_envio: necesitaEnvio ? direccion : undefined,
-            comentarios: comentarios || undefined,
-          }
-        : p
-    ));
-
-    toast({ title: '¡Pedido actualizado! ✏️' });
+    await supabase.from('prana_pedido_items').insert(nuevosItems);
+    await refetchPedidos();
+    toast({ title: '✏️ Pedido actualizado' });
+    setSaving(false);
     setPedidoEditando(null);
   };
 
@@ -132,13 +120,7 @@ const HistorialPage = () => {
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className={estadoColor[p.estado]}>{estadoLabel[p.estado]}</Badge>
                     {p.estado === 'pendiente' && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-primary hover:text-primary"
-                        title="Editar pedido"
-                        onClick={() => abrirEditor(p)}
-                      >
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => abrirEditor(p)}>
                         <Pencil className="h-4 w-4" />
                       </Button>
                     )}
@@ -163,7 +145,7 @@ const HistorialPage = () => {
                 </div>
                 <div className="flex gap-3 text-xs text-muted-foreground mt-2 flex-wrap">
                   <span>Pago: {p.metodo_pago}</span>
-                  <span>{p.necesita_envio ? `📍 Envío: ${p.direccion_envio}` : '🏠 Retiro en local'}</span>
+                  <span>{p.necesita_envio ? `📍 ${p.direccion_envio}` : '🏠 Retiro en local'}</span>
                   {p.comentarios && <span className="italic">"{p.comentarios}"</span>}
                 </div>
               </CardContent>
@@ -172,76 +154,44 @@ const HistorialPage = () => {
         </div>
       )}
 
-      {/* Modal editor de pedido */}
       <Dialog open={!!pedidoEditando} onOpenChange={open => !open && setPedidoEditando(null)}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-display text-xl">Editar pedido</DialogTitle>
           </DialogHeader>
-
           <div className="space-y-4">
-            {/* Selector de viandas */}
             <div className="space-y-2">
               <p className="font-semibold text-sm">Viandas</p>
               {itemsActivos.map(item => {
                 const qty = cantidades[item.id] || 0;
                 return (
-                  <div
-                    key={item.id}
-                    className={`flex items-center justify-between p-3 rounded-lg border transition-all ${qty > 0 ? 'border-primary/40 bg-primary/5' : 'border-border'}`}
-                  >
+                  <div key={item.id} className={`flex items-center justify-between p-3 rounded-lg border transition-all ${qty > 0 ? 'border-primary/40 bg-primary/5' : 'border-border'}`}>
                     <div className="flex-1 min-w-0 mr-3">
                       <p className="text-sm font-medium leading-snug">{item.nombre}</p>
                       <p className="text-xs text-accent font-semibold">${item.precio.toLocaleString('es-AR')}</p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setCant(item.id, -1)} disabled={qty === 0}>
-                        <Minus className="h-3 w-3" />
-                      </Button>
+                      <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setCant(item.id, -1)} disabled={qty === 0}><Minus className="h-3 w-3" /></Button>
                       <span className="w-6 text-center font-bold text-sm">{qty}</span>
-                      <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setCant(item.id, 1)}>
-                        <Plus className="h-3 w-3" />
-                      </Button>
+                      <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setCant(item.id, 1)}><Plus className="h-3 w-3" /></Button>
                     </div>
                   </div>
                 );
               })}
             </div>
-
-            {/* Método de pago */}
             <div>
               <Label className="font-semibold">Método de pago</Label>
               <RadioGroup value={metodoPago} onValueChange={v => setMetodoPago(v as any)} className="flex gap-4 mt-2">
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="efectivo" id="ed-efectivo" />
-                  <Label htmlFor="ed-efectivo">Efectivo</Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="transferencia" id="ed-transferencia" />
-                  <Label htmlFor="ed-transferencia">Transferencia</Label>
-                </div>
+                <div className="flex items-center gap-2"><RadioGroupItem value="efectivo" id="h-ef" /><Label htmlFor="h-ef">Efectivo</Label></div>
+                <div className="flex items-center gap-2"><RadioGroupItem value="transferencia" id="h-tr" /><Label htmlFor="h-tr">Transferencia</Label></div>
               </RadioGroup>
             </div>
-
-            {/* Envío */}
             <div className="flex items-center justify-between">
               <Label className="font-semibold">¿Necesitás envío?</Label>
               <Switch checked={necesitaEnvio} onCheckedChange={setNecesitaEnvio} />
             </div>
-            {necesitaEnvio && (
-              <div>
-                <Label>Dirección de envío</Label>
-                <Input value={direccion} onChange={e => setDireccion(e.target.value)} placeholder="Tu dirección completa" />
-              </div>
-            )}
-
-            {/* Comentarios */}
-            <div>
-              <Label>Comentarios</Label>
-              <Textarea value={comentarios} onChange={e => setComentarios(e.target.value)} placeholder="Sin sal, doble porción, etc." />
-            </div>
-
-            {/* Total */}
+            {necesitaEnvio && <div><Label>Dirección</Label><Input value={direccion} onChange={e => setDireccion(e.target.value)} /></div>}
+            <div><Label>Comentarios</Label><Textarea value={comentarios} onChange={e => setComentarios(e.target.value)} /></div>
             {totalItems > 0 && (
               <div className="flex justify-between items-center bg-secondary rounded-lg px-4 py-3">
                 <span className="text-sm text-muted-foreground">{totalItems} vianda{totalItems > 1 ? 's' : ''}</span>
@@ -249,10 +199,11 @@ const HistorialPage = () => {
               </div>
             )}
           </div>
-
           <DialogFooter className="gap-2 mt-2">
             <Button variant="outline" onClick={() => setPedidoEditando(null)}>Cancelar</Button>
-            <Button onClick={guardarEdicion} disabled={totalItems === 0}>Guardar cambios</Button>
+            <Button onClick={guardarEdicion} disabled={saving || totalItems === 0}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Guardar cambios'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

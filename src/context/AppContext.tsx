@@ -1,26 +1,17 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
-import { UserRole, Cliente, AppConfig, Pedido } from '@/lib/types';
-import { MOCK_CLIENTES, MOCK_PEDIDOS, MOCK_CONFIG, MENU_ITEMS } from '@/lib/mock-data';
-import { MenuItem } from '@/lib/types';
-
-interface AuthState {
-  isLoggedIn: boolean;
-  role: UserRole | null;
-  cliente: Cliente | null;
-  login: (email: string, password: string, role?: UserRole) => boolean;
-  register: (data: { nombre: string; apellido: string; email: string; telefono?: string }) => boolean;
-  logout: () => void;
-}
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { supabase } from '@/lib/supabase';
+import { MenuItem, Pedido, AppConfig } from '@/lib/types';
+import { useAuth } from '@/hooks/useAuth';
 
 interface AppState {
-  auth: AuthState;
+  menuItems: MenuItem[];
+  setMenuItems: React.Dispatch<React.SetStateAction<MenuItem[]>>;
   pedidos: Pedido[];
   setPedidos: React.Dispatch<React.SetStateAction<Pedido[]>>;
   config: AppConfig;
   setConfig: React.Dispatch<React.SetStateAction<AppConfig>>;
-  menuItems: MenuItem[];
-  setMenuItems: React.Dispatch<React.SetStateAction<MenuItem[]>>;
-  clientes: Cliente[];
+  loadingMenu: boolean;
+  refetchPedidos: () => Promise<void>;
 }
 
 const AppContext = createContext<AppState | null>(null);
@@ -31,58 +22,93 @@ export const useApp = () => {
   return ctx;
 };
 
+const CONFIG_DEFAULT: AppConfig = {
+  whatsapp_nati: '5492994000000',
+  datos_bancarios: 'Alias: MUNDO.PRANA\nCBU: 0000000000000000000000\nTitular: Mundo Prana',
+  mensaje_bienvenida: '¡Bienvenido/a a Mundo Prana! 🌿',
+};
+
 export const AppProvider = ({ children }: { children: ReactNode }) => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [role, setRole] = useState<UserRole | null>(null);
-  const [cliente, setCliente] = useState<Cliente | null>(null);
-  const [pedidos, setPedidos] = useState<Pedido[]>(MOCK_PEDIDOS);
-  const [config, setConfig] = useState<AppConfig>(MOCK_CONFIG);
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(MENU_ITEMS);
+  const { role, cliente, session } = useAuth();
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [pedidos, setPedidos] = useState<Pedido[]>([]);
+  const [config, setConfig] = useState<AppConfig>(CONFIG_DEFAULT);
+  const [loadingMenu, setLoadingMenu] = useState(true);
 
-  const login = (email: string, _password: string, forceRole?: UserRole): boolean => {
-    if (email === 'admin@prana.com') {
-      setRole('admin');
-      setIsLoggedIn(true);
-      return true;
-    }
-    if (email === 'super@prana.com') {
-      setRole('superadmin');
-      setIsLoggedIn(true);
-      return true;
-    }
-    setRole(forceRole || 'cliente');
-    setCliente(MOCK_CLIENTES[0]);
-    setIsLoggedIn(true);
-    return true;
-  };
-
-  const register = (data: { nombre: string; apellido: string; email: string; telefono?: string }): boolean => {
-    const newCliente: Cliente = {
-      id: `c${Date.now()}`,
-      user_id: `u${Date.now()}`,
-      nombre: data.nombre,
-      apellido: data.apellido,
-      email: data.email,
-      telefono: data.telefono,
-      created_at: new Date().toISOString(),
+  // Cargar menú (público)
+  useEffect(() => {
+    const fetchMenu = async () => {
+      const { data } = await supabase
+        .from('prana_menu')
+        .select('*')
+        .order('orden');
+      if (data) setMenuItems(data as MenuItem[]);
+      setLoadingMenu(false);
     };
-    setCliente(newCliente);
-    setRole('cliente');
-    setIsLoggedIn(true);
-    return true;
+    fetchMenu();
+  }, []);
+
+  // Cargar config (pública)
+  useEffect(() => {
+    const fetchConfig = async () => {
+      const { data } = await supabase.from('prana_config').select('*');
+      if (data && data.length > 0) {
+        const cfg: AppConfig = { ...CONFIG_DEFAULT };
+        data.forEach((row: { clave: string; valor: string }) => {
+          if (row.clave === 'whatsapp_nati') cfg.whatsapp_nati = row.valor;
+          if (row.clave === 'datos_bancarios') cfg.datos_bancarios = row.valor;
+          if (row.clave === 'mensaje_bienvenida') cfg.mensaje_bienvenida = row.valor;
+        });
+        setConfig(cfg);
+      }
+    };
+    fetchConfig();
+  }, []);
+
+  // Cargar pedidos según rol
+  const fetchPedidos = async () => {
+    if (!session) return;
+
+    let query = supabase
+      .from('prana_pedidos')
+      .select(`
+        *,
+        prana_clientes(*),
+        prana_pedido_items(*, prana_menu(*))
+      `)
+      .order('created_at', { ascending: false });
+
+    // Cliente solo ve los suyos
+    if (role === 'cliente' && cliente) {
+      query = query.eq('cliente_id', cliente.id);
+    }
+
+    const { data } = await query;
+    if (data) {
+      const pedidosMapeados = data.map((p: any) => ({
+        ...p,
+        cliente: p.prana_clientes,
+        items: (p.prana_pedido_items || []).map((i: any) => ({
+          ...i,
+          menu_item: i.prana_menu,
+        })),
+      }));
+      setPedidos(pedidosMapeados as Pedido[]);
+    }
   };
 
-  const logout = () => {
-    setIsLoggedIn(false);
-    setRole(null);
-    setCliente(null);
-  };
+  useEffect(() => {
+    if (session && role) fetchPedidos();
+    else setPedidos([]);
+  }, [session, role, cliente]);
 
   return (
     <AppContext.Provider value={{
-      auth: { isLoggedIn, role, cliente, login, register, logout },
-      pedidos, setPedidos, config, setConfig, menuItems, setMenuItems,
-      clientes: MOCK_CLIENTES,
+      menuItems, setMenuItems,
+      pedidos, setPedidos,
+      config, setConfig,
+      loadingMenu,
+      refetchPedidos: fetchPedidos,
     }}>
       {children}
     </AppContext.Provider>
