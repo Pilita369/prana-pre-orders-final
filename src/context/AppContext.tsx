@@ -38,10 +38,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Cargar menú (público)
   useEffect(() => {
     const fetchMenu = async () => {
-      const { data } = await supabase
+      console.log('[prana] fetchMenu start');
+      const { data, error } = await supabase
         .from('prana_menu')
         .select('*')
         .order('orden');
+      console.log('[prana] fetchMenu result:', data?.length, error);
       if (data) setMenuItems(data as MenuItem[]);
       setLoadingMenu(false);
     };
