@@ -39,11 +39,7 @@ const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles:
     </div>
   );
   if (!session) return <Navigate to="/login" replace />;
-  if (!role) return (
-    <div className="flex min-h-screen items-center justify-center">
-      <Loader2 className="h-8 w-8 animate-spin text-primary" />
-    </div>
-  );
+  if (!role) return <Navigate to="/login" replace />;
   if (!roles.includes(role)) return <Navigate to="/" replace />;
   return <>{children}</>;
 };

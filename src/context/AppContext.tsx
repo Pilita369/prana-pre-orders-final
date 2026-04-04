@@ -68,6 +68,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Cargar pedidos según rol
   const fetchPedidos = async () => {
     if (!session) return;
+    if (role === 'cliente' && !cliente) return;
 
     let query = supabase
       .from('prana_pedidos')

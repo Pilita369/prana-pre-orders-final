@@ -8,5 +8,13 @@ console.log('SUPABASE KEY:', key ? 'OK' : 'UNDEFINED');
 
 export const supabase = createClient(
   url || 'https://veamqwvbayavthmvtreh.supabase.co',
-  key || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlYW1xd3ZiYXlhdnRobXZ0cmVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNjk3NTcsImV4cCI6MjA5MDY0NTc1N30.PqRtNItPV8pvgMAeCZR6KQRJKe90byq9dbWQBrbTZLs'
+  key || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlYW1xd3ZiYXlhdnRobXZ0cmVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNjk3NTcsImV4cCI6MjA5MDY0NTc1N30.PqRtNItPV8pvgMAeCZR6KQRJKe90byq9dbWQBrbTZLs',
+  {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+      storageKey: 'prana-auth-token',
+    },
+  }
 );
