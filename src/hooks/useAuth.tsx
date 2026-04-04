@@ -60,12 +60,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
         await fetchUserData(session.user.id);
-      } else {
+      } else if (event === 'SIGNED_OUT') {
         setRole(null);
         setCliente(null);
       }
@@ -102,6 +102,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
 
     if (clienteError) return { error: 'Error al guardar el perfil' };
+
+    // Asignar rol de cliente
+    const { error: rolError } = await supabase.from('prana_roles').insert({
+      user_id: authData.user.id,
+      role: 'cliente',
+    });
+
+    if (rolError) return { error: 'Error al asignar el rol' };
+
+    // Sincronizar el estado local con el rol recién creado
+    setRole('cliente');
+    setCliente({
+      id: '',
+      user_id: authData.user.id,
+      nombre: data.nombre,
+      apellido: data.apellido,
+      email: data.email,
+      telefono: data.telefono,
+      created_at: new Date().toISOString(),
+    });
+
     return { error: null };
   };
 
