@@ -10,6 +10,7 @@ import { Loader2 } from "lucide-react";
 import MenuPage from "./pages/MenuPage";
 import LoginPage from "./pages/LoginPage";
 import RegistroPage from "./pages/RegistroPage";
+import InicioPage from "./pages/InicioPage";
 import NuevoPedidoPage from "./pages/NuevoPedidoPage";
 import HistorialPage from "./pages/HistorialPage";
 import AdminPage from "./pages/AdminPage";
@@ -28,7 +29,7 @@ const IndexRedirect = () => {
   if (!session) return <Navigate to="/menu" replace />;
   if (role === 'superadmin') return <Navigate to="/superadmin" replace />;
   if (role === 'admin') return <Navigate to="/admin" replace />;
-  return <Navigate to="/pedido/nuevo" replace />;
+  return <Navigate to="/inicio" replace />;
 };
 
 const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles: string[] }) => {
@@ -57,6 +58,11 @@ const App = () => (
               <Route path="/menu" element={<MenuPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/registro" element={<RegistroPage />} />
+              <Route path="/inicio" element={
+                <ProtectedRoute roles={['cliente']}>
+                  <InicioPage />
+                </ProtectedRoute>
+              } />
               <Route path="/pedido/nuevo" element={
                 <ProtectedRoute roles={['cliente']}>
                   <NuevoPedidoPage />

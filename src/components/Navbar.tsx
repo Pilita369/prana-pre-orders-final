@@ -46,6 +46,9 @@ const Navbar = () => {
 
           {isLoggedIn && role === 'cliente' && (
             <>
+              <Link to="/inicio" className="text-sm font-semibold hover:text-primary transition-colors" onClick={() => setOpen(false)}>
+                Inicio
+              </Link>
               <Link to="/pedido/nuevo" className="text-sm font-semibold hover:text-primary transition-colors" onClick={() => setOpen(false)}>
                 Nuevo pedido
               </Link>

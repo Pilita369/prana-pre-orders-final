@@ -13,7 +13,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Truck, Package, Settings, Pencil, Minus, Plus, Loader2 } from 'lucide-react';
+import { Truck, Package, Settings, Pencil, Minus, Plus, Loader2, Trophy, Star } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Pedido } from '@/lib/types';
 
@@ -40,6 +40,24 @@ const AdminPage = () => {
   const pedidosHoy = pedidos.filter(p => new Date(p.fecha_pedido).toDateString() === hoy);
   const repartos = pedidos.filter(p => p.necesita_envio && p.estado !== 'entregado');
   const itemsActivos = menuItems.filter(i => i.activo);
+
+  const getPuntos = (clienteId: string) =>
+    pedidos.filter(p => p.cliente_id === clienteId)
+      .reduce((t, p) => t + p.items.reduce((s, i) => s + i.cantidad, 0), 0);
+
+  const getTier = (puntos: number) => {
+    if (puntos >= 500) return { label: 'Oro', color: 'bg-yellow-100 text-yellow-800 border-yellow-300' };
+    if (puntos >= 250) return { label: 'Plata', color: 'bg-slate-100 text-slate-700 border-slate-300' };
+    return null;
+  };
+
+  const clientes = Array.from(new Map(
+    pedidos.filter(p => p.cliente).map(p => [p.cliente!.id, p.cliente!])
+  ).values());
+
+  const ranking = clientes
+    .map(c => ({ cliente: c, puntos: getPuntos(c.id), totalPedidos: pedidos.filter(p => p.cliente_id === c.id).length }))
+    .sort((a, b) => b.puntos - a.puntos);
 
   const cambiarEstado = async (id: string, estado: string) => {
     await supabase.from('prana_pedidos').update({ estado }).eq('id', id);
@@ -144,9 +162,10 @@ const AdminPage = () => {
     <div className="container mx-auto px-4 py-8 max-w-4xl">
       <h1 className="font-display text-3xl font-bold mb-6">Panel de Nati 🌿</h1>
       <Tabs defaultValue="pedidos">
-        <TabsList className="mb-4">
+        <TabsList className="mb-4 flex-wrap h-auto gap-1">
           <TabsTrigger value="pedidos" className="gap-1"><Package className="h-4 w-4" /> Pedidos del día</TabsTrigger>
           <TabsTrigger value="repartos" className="gap-1"><Truck className="h-4 w-4" /> Repartos</TabsTrigger>
+          <TabsTrigger value="ranking" className="gap-1"><Trophy className="h-4 w-4" /> Ranking</TabsTrigger>
           <TabsTrigger value="config" className="gap-1"><Settings className="h-4 w-4" /> Config</TabsTrigger>
         </TabsList>
 
@@ -178,6 +197,51 @@ const AdminPage = () => {
                 </Card>
               ))}</div>
           }
+        </TabsContent>
+
+        <TabsContent value="ranking">
+          <div className="mb-4 p-4 bg-secondary rounded-lg text-sm space-y-1">
+            <p className="font-semibold mb-1">Sistema de puntos — 1 vianda = 1 punto</p>
+            <div className="flex items-center gap-2"><Star className="h-4 w-4 text-slate-500" /><span><strong>Plata (250 pts):</strong> {config.beneficio_250 || 'Sin definir'}</span></div>
+            <div className="flex items-center gap-2"><Star className="h-4 w-4 text-yellow-500" /><span><strong>Oro (500 pts):</strong> {config.beneficio_500 || 'Sin definir'}</span></div>
+          </div>
+          <div className="space-y-3">
+            {ranking.length === 0
+              ? <p className="text-muted-foreground text-center py-8">No hay clientes aún</p>
+              : ranking.map((r, idx) => {
+                  const tier = getTier(r.puntos);
+                  const progreso = r.puntos >= 500 ? 100 : r.puntos >= 250 ? ((r.puntos - 250) / 250) * 100 : (r.puntos / 250) * 100;
+                  const siguiente = r.puntos >= 500 ? null : r.puntos >= 250 ? 500 : 250;
+                  return (
+                    <Card key={r.cliente.id}>
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="text-2xl font-bold text-muted-foreground w-8 text-center">
+                            {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-semibold">{r.cliente.nombre} {r.cliente.apellido}</p>
+                              {tier && <Badge variant="outline" className={tier.color}>{tier.label}</Badge>}
+                            </div>
+                            <p className="text-xs text-muted-foreground">{r.totalPedidos} pedido{r.totalPedidos !== 1 ? 's' : ''}</p>
+                            <div className="mt-2">
+                              <div className="flex justify-between text-xs mb-1">
+                                <span className="font-semibold text-primary">{r.puntos} puntos</span>
+                                {siguiente && <span className="text-muted-foreground">Faltan {siguiente - r.puntos} para {siguiente === 250 ? 'Plata' : 'Oro'}</span>}
+                              </div>
+                              <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full ${r.puntos >= 500 ? 'bg-yellow-400' : r.puntos >= 250 ? 'bg-slate-400' : 'bg-primary'}`} style={{ width: `${Math.min(progreso, 100)}%` }} />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })
+            }
+          </div>
         </TabsContent>
 
         <TabsContent value="config">
