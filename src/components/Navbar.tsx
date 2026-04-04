@@ -29,6 +29,12 @@ const Navbar = () => {
         </button>
 
         <div className={`${open ? 'flex' : 'hidden'} md:flex absolute md:static top-full left-0 right-0 bg-card md:bg-transparent flex-col md:flex-row items-center gap-3 p-4 md:p-0 border-b md:border-0 shadow-md md:shadow-none`}>
+          {isLoggedIn && role === 'cliente' && (
+            <Link to="/inicio" className="text-sm font-semibold hover:text-primary transition-colors" onClick={() => setOpen(false)}>
+              Inicio
+            </Link>
+          )}
+
           <Link to="/menu" className="text-sm font-semibold hover:text-primary transition-colors" onClick={() => setOpen(false)}>
             Menú
           </Link>
@@ -46,9 +52,6 @@ const Navbar = () => {
 
           {isLoggedIn && role === 'cliente' && (
             <>
-              <Link to="/inicio" className="text-sm font-semibold hover:text-primary transition-colors" onClick={() => setOpen(false)}>
-                Inicio
-              </Link>
               <Link to="/pedido/nuevo" className="text-sm font-semibold hover:text-primary transition-colors" onClick={() => setOpen(false)}>
                 Nuevo pedido
               </Link>
