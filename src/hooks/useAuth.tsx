@@ -120,11 +120,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
+    // Clear state immediately so UI responds at once
     setUser(null);
     setSession(null);
     setRole(null);
     setCliente(null);
+    // Fire signOut without blocking — if it hangs, state is already cleared
+    supabase.auth.signOut().catch(() => {});
   };
 
   return (
