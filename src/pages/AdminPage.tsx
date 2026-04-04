@@ -13,7 +13,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Truck, Package, Settings, Pencil, Minus, Plus, Loader2, Trophy, Star } from 'lucide-react';
+import { Truck, Package, Settings, Pencil, Minus, Plus, Loader2, Trophy, Star, Users } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Pedido } from '@/lib/types';
 
@@ -165,6 +165,7 @@ const AdminPage = () => {
         <TabsList className="mb-4 flex-wrap h-auto gap-1">
           <TabsTrigger value="pedidos" className="gap-1"><Package className="h-4 w-4" /> Pedidos del día</TabsTrigger>
           <TabsTrigger value="repartos" className="gap-1"><Truck className="h-4 w-4" /> Repartos</TabsTrigger>
+          <TabsTrigger value="clientes" className="gap-1"><Users className="h-4 w-4" /> Clientes</TabsTrigger>
           <TabsTrigger value="ranking" className="gap-1"><Trophy className="h-4 w-4" /> Ranking</TabsTrigger>
           <TabsTrigger value="config" className="gap-1"><Settings className="h-4 w-4" /> Config</TabsTrigger>
         </TabsList>
@@ -197,6 +198,46 @@ const AdminPage = () => {
                 </Card>
               ))}</div>
           }
+        </TabsContent>
+
+        <TabsContent value="clientes">
+          <div className="space-y-3">
+            {clientes.length === 0
+              ? <p className="text-muted-foreground text-center py-8">No hay clientes aún</p>
+              : clientes.map(c => {
+                  const puntos = getPuntos(c.id);
+                  const tier = getTier(puntos);
+                  const misPedidos = pedidos.filter(p => p.cliente_id === c.id);
+                  const ultimo = misPedidos[0];
+                  return (
+                    <Card key={c.id}>
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-semibold">{c.nombre} {c.apellido}</p>
+                              {tier && <Badge variant="outline" className={tier.color}>{tier.label}</Badge>}
+                            </div>
+                            <p className="text-sm text-muted-foreground">{c.email}</p>
+                            {c.telefono && <p className="text-sm text-muted-foreground">📞 {c.telefono}</p>}
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="font-bold text-primary">{puntos} pts</p>
+                            <p className="text-xs text-muted-foreground">{misPedidos.length} pedido{misPedidos.length !== 1 ? 's' : ''}</p>
+                          </div>
+                        </div>
+                        {ultimo && (
+                          <div className="text-xs text-muted-foreground border-t pt-2 mt-2">
+                            <span className="font-semibold">Último pedido: </span>
+                            {new Date(ultimo.fecha_pedido).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })} — ${ultimo.total.toLocaleString('es-AR')} ({estadoLabel[ultimo.estado]})
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })
+            }
+          </div>
         </TabsContent>
 
         <TabsContent value="ranking">
