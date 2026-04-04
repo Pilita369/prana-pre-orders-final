@@ -26,6 +26,8 @@ const CONFIG_DEFAULT: AppConfig = {
   whatsapp_nati: '5492994000000',
   datos_bancarios: 'Alias: MUNDO.PRANA\nCBU: 0000000000000000000000\nTitular: Mundo Prana',
   mensaje_bienvenida: '¡Bienvenido/a a Mundo Prana! 🌿',
+  beneficio_250: 'Descuento especial en tu próximo pedido',
+  beneficio_500: 'Vianda gratis a elección',
 };
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
@@ -58,6 +60,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           if (row.clave === 'whatsapp_nati') cfg.whatsapp_nati = row.valor;
           if (row.clave === 'datos_bancarios') cfg.datos_bancarios = row.valor;
           if (row.clave === 'mensaje_bienvenida') cfg.mensaje_bienvenida = row.valor;
+          if (row.clave === 'beneficio_250') cfg.beneficio_250 = row.valor;
+          if (row.clave === 'beneficio_500') cfg.beneficio_500 = row.valor;
         });
         setConfig(cfg);
       }

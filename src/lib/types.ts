@@ -47,4 +47,6 @@ export interface AppConfig {
   whatsapp_nati: string;
   datos_bancarios: string;
   mensaje_bienvenida: string;
+  beneficio_250: string;
+  beneficio_500: string;
 }

@@ -13,11 +13,29 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Pedido } from '@/lib/types';
-import { Plus, Pencil, Trash2, Users, Package, UtensilsCrossed, Settings, Truck, Minus, Loader2 } from 'lucide-react';
+import { Pedido, Cliente } from '@/lib/types';
+import { Plus, Pencil, Trash2, Users, Package, UtensilsCrossed, Settings, Truck, Minus, Loader2, History, Trophy, Star } from 'lucide-react';
 
 const estadoLabel: Record<string, string> = {
   pendiente: 'Pendiente', en_preparacion: 'En preparación', listo: 'Listo', entregado: 'Entregado',
+};
+
+const estadoColor: Record<string, string> = {
+  pendiente: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+  en_preparacion: 'bg-blue-100 text-blue-800 border-blue-300',
+  listo: 'bg-green-100 text-green-800 border-green-300',
+  entregado: 'bg-muted text-muted-foreground',
+};
+
+const getPuntos = (clienteId: string, pedidos: Pedido[]) =>
+  pedidos
+    .filter(p => p.cliente_id === clienteId)
+    .reduce((total, p) => total + p.items.reduce((s, i) => s + i.cantidad, 0), 0);
+
+const getTier = (puntos: number) => {
+  if (puntos >= 500) return { label: 'Oro', color: 'bg-yellow-100 text-yellow-800 border-yellow-300' };
+  if (puntos >= 250) return { label: 'Plata', color: 'bg-slate-100 text-slate-700 border-slate-300' };
+  return null;
 };
 
 const SuperadminPage = () => {
@@ -36,6 +54,8 @@ const SuperadminPage = () => {
   const [comentarios, setComentarios] = useState('');
   const [estadoEdit, setEstadoEdit] = useState('pendiente');
   const [saving, setSaving] = useState(false);
+
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // Menú
   const addItem = async () => {
@@ -63,13 +83,23 @@ const SuperadminPage = () => {
   const saveConfig = async () => {
     setSavingCfg(true);
     await Promise.all([
-      supabase.from('prana_config').update({ valor: cfgForm.whatsapp_nati }).eq('clave', 'whatsapp_nati'),
-      supabase.from('prana_config').update({ valor: cfgForm.datos_bancarios }).eq('clave', 'datos_bancarios'),
-      supabase.from('prana_config').update({ valor: cfgForm.mensaje_bienvenida }).eq('clave', 'mensaje_bienvenida'),
+      supabase.from('prana_config').upsert({ clave: 'whatsapp_nati', valor: cfgForm.whatsapp_nati }, { onConflict: 'clave' }),
+      supabase.from('prana_config').upsert({ clave: 'datos_bancarios', valor: cfgForm.datos_bancarios }, { onConflict: 'clave' }),
+      supabase.from('prana_config').upsert({ clave: 'mensaje_bienvenida', valor: cfgForm.mensaje_bienvenida }, { onConflict: 'clave' }),
+      supabase.from('prana_config').upsert({ clave: 'beneficio_250', valor: cfgForm.beneficio_250 }, { onConflict: 'clave' }),
+      supabase.from('prana_config').upsert({ clave: 'beneficio_500', valor: cfgForm.beneficio_500 }, { onConflict: 'clave' }),
     ]);
     setConfig(cfgForm);
     toast({ title: 'Configuración guardada ✅' });
     setSavingCfg(false);
+  };
+
+  // Borrar pedido
+  const deletePedido = async (id: string) => {
+    await supabase.from('prana_pedidos').delete().eq('id', id);
+    await refetchPedidos();
+    setConfirmDeleteId(null);
+    toast({ title: 'Pedido eliminado' });
   };
 
   // Editor pedido
@@ -117,15 +147,77 @@ const SuperadminPage = () => {
     }));
     await supabase.from('prana_pedido_items').insert(nuevosItems);
     await refetchPedidos();
-    toast({ title: '✏️ Pedido actualizado' });
+    toast({ title: 'Pedido actualizado ✅' });
     setSaving(false);
     setPedidoEditando(null);
   };
 
-  // Clientes únicos de pedidos
+  // Clientes únicos
   const clientes = Array.from(new Map(
     pedidos.filter(p => p.cliente).map(p => [p.cliente!.id, p.cliente!])
   ).values());
+
+  // Pedidos activos vs historial
+  const pedidosActivos = pedidos.filter(p => p.estado !== 'entregado');
+  const pedidosHistorial = pedidos.filter(p => p.estado === 'entregado');
+
+  // Ranking
+  const ranking = clientes
+    .map(c => ({
+      cliente: c,
+      puntos: getPuntos(c.id, pedidos),
+      totalPedidos: pedidos.filter(p => p.cliente_id === c.id).length,
+    }))
+    .sort((a, b) => b.puntos - a.puntos);
+
+  const PedidoCard = ({ p, showDelete = true }: { p: Pedido; showDelete?: boolean }) => (
+    <Card key={p.id}>
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between mb-2 gap-2">
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold">{p.cliente?.nombre} {p.cliente?.apellido}</p>
+            <p className="text-xs text-muted-foreground">
+              {new Date(p.fecha_pedido).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })} • {p.metodo_pago} • <span className="font-semibold text-accent">${p.total.toLocaleString('es-AR')}</span>
+            </p>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <Badge variant="outline" className={`text-xs ${estadoColor[p.estado]}`}>{estadoLabel[p.estado]}</Badge>
+            {showDelete && (
+              confirmDeleteId === p.id ? (
+                <div className="flex gap-1">
+                  <Button variant="destructive" size="sm" className="h-7 text-xs px-2" onClick={() => deletePedido(p.id)}>Confirmar</Button>
+                  <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => setConfirmDeleteId(null)}>No</Button>
+                </div>
+              ) : (
+                <>
+                  <Select value={p.estado} onValueChange={v => cambiarEstado(p.id, v)}>
+                    <SelectTrigger className="w-[130px] h-7 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(estadoLabel).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-primary" onClick={() => abrirEditor(p)}>
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setConfirmDeleteId(p.id)}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </>
+              )
+            )}
+          </div>
+        </div>
+        <div className="text-sm space-y-1">
+          {p.items.map(i => {
+            const mi = i.menu_item || menuItems.find(m => m.id === i.menu_item_id);
+            return <p key={i.id} className="text-muted-foreground">{i.cantidad}x {mi?.nombre}</p>;
+          })}
+        </div>
+        {p.necesita_envio && <Badge variant="outline" className="mt-2 gap-1"><Truck className="h-3 w-3" /> {p.direccion_envio}</Badge>}
+        {p.comentarios && <p className="text-sm italic text-muted-foreground mt-1">"{p.comentarios}"</p>}
+      </CardContent>
+    </Card>
+  );
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl">
@@ -134,52 +226,99 @@ const SuperadminPage = () => {
       <Tabs defaultValue="pedidos">
         <TabsList className="mb-4 flex-wrap h-auto gap-1">
           <TabsTrigger value="pedidos" className="gap-1"><Package className="h-4 w-4" /> Pedidos</TabsTrigger>
+          <TabsTrigger value="historial" className="gap-1"><History className="h-4 w-4" /> Historial</TabsTrigger>
+          <TabsTrigger value="ranking" className="gap-1"><Trophy className="h-4 w-4" /> Ranking</TabsTrigger>
           <TabsTrigger value="menu" className="gap-1"><UtensilsCrossed className="h-4 w-4" /> Menú</TabsTrigger>
           <TabsTrigger value="clientes" className="gap-1"><Users className="h-4 w-4" /> Clientes</TabsTrigger>
           <TabsTrigger value="config" className="gap-1"><Settings className="h-4 w-4" /> Config</TabsTrigger>
         </TabsList>
 
+        {/* PEDIDOS ACTIVOS */}
         <TabsContent value="pedidos">
           <div className="space-y-4">
-            {pedidos.length === 0
-              ? <p className="text-muted-foreground text-center py-8">No hay pedidos</p>
-              : pedidos.map(p => (
-                <Card key={p.id}>
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-2 gap-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold">{p.cliente?.nombre} {p.cliente?.apellido}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(p.fecha_pedido).toLocaleDateString('es-AR')} • {p.metodo_pago} • <span className="font-semibold text-accent">${p.total.toLocaleString('es-AR')}</span>
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <Select value={p.estado} onValueChange={v => cambiarEstado(p.id, v)}>
-                          <SelectTrigger className="w-[145px] h-8 text-sm"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            {Object.entries(estadoLabel).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => abrirEditor(p)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="text-sm space-y-1">
-                      {p.items.map(i => {
-                        const mi = i.menu_item || menuItems.find(m => m.id === i.menu_item_id);
-                        return <p key={i.id} className="text-muted-foreground">{i.cantidad}x {mi?.nombre}</p>;
-                      })}
-                    </div>
-                    {p.necesita_envio && <Badge variant="outline" className="mt-2 gap-1"><Truck className="h-3 w-3" /> {p.direccion_envio}</Badge>}
-                    {p.comentarios && <p className="text-sm italic text-muted-foreground mt-1">"{p.comentarios}"</p>}
-                  </CardContent>
-                </Card>
-              ))
+            {pedidosActivos.length === 0
+              ? <p className="text-muted-foreground text-center py-8">No hay pedidos activos</p>
+              : pedidosActivos.map(p => <PedidoCard key={p.id} p={p} />)
             }
           </div>
         </TabsContent>
 
+        {/* HISTORIAL */}
+        <TabsContent value="historial">
+          <div className="mb-4 flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">{pedidosHistorial.length} pedido{pedidosHistorial.length !== 1 ? 's' : ''} entregado{pedidosHistorial.length !== 1 ? 's' : ''}</p>
+            <p className="text-sm font-semibold text-accent">
+              Total: ${pedidosHistorial.reduce((s, p) => s + p.total, 0).toLocaleString('es-AR')}
+            </p>
+          </div>
+          <div className="space-y-4">
+            {pedidosHistorial.length === 0
+              ? <p className="text-muted-foreground text-center py-8">Todavía no hay pedidos entregados</p>
+              : pedidosHistorial.map(p => <PedidoCard key={p.id} p={p} />)
+            }
+          </div>
+        </TabsContent>
+
+        {/* RANKING */}
+        <TabsContent value="ranking">
+          <div className="mb-4 p-4 bg-secondary rounded-lg text-sm space-y-1">
+            <p className="font-semibold mb-2">Sistema de puntos</p>
+            <p>1 vianda = 1 punto</p>
+            <div className="flex items-center gap-2">
+              <Star className="h-4 w-4 text-slate-500" />
+              <span><strong>250 puntos (Plata):</strong> {config.beneficio_250 || 'Sin definir'}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Star className="h-4 w-4 text-yellow-500" />
+              <span><strong>500 puntos (Oro):</strong> {config.beneficio_500 || 'Sin definir'}</span>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {ranking.length === 0
+              ? <p className="text-muted-foreground text-center py-8">No hay clientes aún</p>
+              : ranking.map((r, idx) => {
+                  const tier = getTier(r.puntos);
+                  const progreso = r.puntos >= 500 ? 100 : r.puntos >= 250 ? ((r.puntos - 250) / 250) * 100 : (r.puntos / 250) * 100;
+                  const siguiente = r.puntos >= 500 ? null : r.puntos >= 250 ? 500 : 250;
+
+                  return (
+                    <Card key={r.cliente.id}>
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="text-2xl font-bold text-muted-foreground w-8 text-center">
+                            {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-semibold">{r.cliente.nombre} {r.cliente.apellido}</p>
+                              {tier && <Badge variant="outline" className={tier.color}>{tier.label}</Badge>}
+                            </div>
+                            <p className="text-xs text-muted-foreground">{r.cliente.email} • {r.totalPedidos} pedido{r.totalPedidos !== 1 ? 's' : ''}</p>
+                            <div className="mt-2">
+                              <div className="flex justify-between text-xs mb-1">
+                                <span className="font-semibold text-primary">{r.puntos} puntos</span>
+                                {siguiente && <span className="text-muted-foreground">Faltan {siguiente - r.puntos} para {siguiente === 250 ? 'Plata' : 'Oro'}</span>}
+                                {!siguiente && <span className="text-yellow-600 font-semibold">Nivel máximo</span>}
+                              </div>
+                              <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all ${r.puntos >= 500 ? 'bg-yellow-400' : r.puntos >= 250 ? 'bg-slate-400' : 'bg-primary'}`}
+                                  style={{ width: `${Math.min(progreso, 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })
+            }
+          </div>
+        </TabsContent>
+
+        {/* MENÚ */}
         <TabsContent value="menu">
           <Card className="mb-4">
             <CardHeader><CardTitle className="text-lg">Agregar item</CardTitle></CardHeader>
@@ -211,23 +350,41 @@ const SuperadminPage = () => {
           </div>
         </TabsContent>
 
+        {/* CLIENTES */}
         <TabsContent value="clientes">
           <div className="space-y-3">
             {clientes.length === 0
               ? <p className="text-muted-foreground text-center py-8">No hay clientes aún</p>
-              : clientes.map(c => (
-                <Card key={c.id}>
-                  <CardContent className="p-4">
-                    <p className="font-semibold">{c.nombre} {c.apellido}</p>
-                    <p className="text-sm text-muted-foreground">{c.email} • {c.telefono || 'Sin teléfono'}</p>
-                    {c.direccion_default && <p className="text-sm text-muted-foreground">📍 {c.direccion_default}</p>}
-                  </CardContent>
-                </Card>
-              ))
+              : clientes.map(c => {
+                  const puntos = getPuntos(c.id, pedidos);
+                  const tier = getTier(puntos);
+                  const totalPedidos = pedidos.filter(p => p.cliente_id === c.id).length;
+                  return (
+                    <Card key={c.id}>
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-semibold">{c.nombre} {c.apellido}</p>
+                              {tier && <Badge variant="outline" className={tier.color}>{tier.label}</Badge>}
+                            </div>
+                            <p className="text-sm text-muted-foreground">{c.email} • {c.telefono || 'Sin teléfono'}</p>
+                            {c.direccion_default && <p className="text-sm text-muted-foreground">📍 {c.direccion_default}</p>}
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="font-bold text-primary">{puntos} pts</p>
+                            <p className="text-xs text-muted-foreground">{totalPedidos} pedido{totalPedidos !== 1 ? 's' : ''}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })
             }
           </div>
         </TabsContent>
 
+        {/* CONFIG */}
         <TabsContent value="config">
           <Card>
             <CardHeader><CardTitle>Configuración general</CardTitle></CardHeader>
@@ -244,6 +401,24 @@ const SuperadminPage = () => {
                 <Label>Mensaje de bienvenida</Label>
                 <Textarea value={cfgForm.mensaje_bienvenida} onChange={e => setCfgForm(p => ({ ...p, mensaje_bienvenida: e.target.value }))} />
               </div>
+              <div className="border-t pt-4">
+                <p className="font-semibold mb-3 flex items-center gap-2"><Star className="h-4 w-4 text-slate-500" /> Beneficio Plata (250 puntos)</p>
+                <Textarea
+                  value={cfgForm.beneficio_250}
+                  onChange={e => setCfgForm(p => ({ ...p, beneficio_250: e.target.value }))}
+                  placeholder="Ej: Descuento 10% en tu próximo pedido"
+                  rows={2}
+                />
+              </div>
+              <div>
+                <p className="font-semibold mb-3 flex items-center gap-2"><Star className="h-4 w-4 text-yellow-500" /> Beneficio Oro (500 puntos)</p>
+                <Textarea
+                  value={cfgForm.beneficio_500}
+                  onChange={e => setCfgForm(p => ({ ...p, beneficio_500: e.target.value }))}
+                  placeholder="Ej: Vianda gratis a elección"
+                  rows={2}
+                />
+              </div>
               <Button onClick={saveConfig} disabled={savingCfg}>
                 {savingCfg ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Guardar configuración'}
               </Button>
@@ -252,6 +427,7 @@ const SuperadminPage = () => {
         </TabsContent>
       </Tabs>
 
+      {/* DIALOG EDITAR PEDIDO */}
       <Dialog open={!!pedidoEditando} onOpenChange={open => !open && setPedidoEditando(null)}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>

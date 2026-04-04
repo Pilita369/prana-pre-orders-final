@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Pencil, Minus, Plus, Loader2 } from 'lucide-react';
+import { Pencil, Minus, Plus, Loader2, Star } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Pedido } from '@/lib/types';
 
@@ -28,7 +28,7 @@ const estadoLabel: Record<string, string> = {
 };
 
 const HistorialPage = () => {
-  const { pedidos, menuItems, refetchPedidos } = useApp();
+  const { pedidos, menuItems, config, refetchPedidos } = useApp();
   const { cliente } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -43,6 +43,16 @@ const HistorialPage = () => {
 
   const misPedidos = pedidos.filter(p => p.cliente_id === cliente?.id);
   const itemsActivos = menuItems.filter(i => i.activo);
+
+  // Puntos: 1 por vianda
+  const puntos = misPedidos.reduce((total, p) =>
+    total + p.items.reduce((s, i) => s + i.cantidad, 0), 0
+  );
+  const siguiente = puntos >= 500 ? null : puntos >= 250 ? 500 : 250;
+  const progreso = puntos >= 500 ? 100 : puntos >= 250
+    ? ((puntos - 250) / 250) * 100
+    : (puntos / 250) * 100;
+  const tier = puntos >= 500 ? 'Oro' : puntos >= 250 ? 'Plata' : null;
 
   const abrirEditor = (p: Pedido) => {
     const cants: Record<string, number> = {};
@@ -72,29 +82,22 @@ const HistorialPage = () => {
       return;
     }
     setSaving(true);
-
     await supabase.from('prana_pedidos').update({
-      total: totalCalc,
-      metodo_pago: metodoPago,
+      total: totalCalc, metodo_pago: metodoPago,
       necesita_envio: necesitaEnvio,
       direccion_envio: necesitaEnvio ? direccion : null,
       comentarios: comentarios || null,
     }).eq('id', pedidoEditando.id);
-
     await supabase.from('prana_pedido_items').delete().eq('pedido_id', pedidoEditando.id);
-
     const nuevosItems = Object.entries(cantidades)
       .filter(([, q]) => q > 0)
       .map(([id, q]) => ({
-        pedido_id: pedidoEditando.id,
-        menu_item_id: id,
-        cantidad: q,
+        pedido_id: pedidoEditando.id, menu_item_id: id, cantidad: q,
         precio_unitario: itemsActivos.find(i => i.id === id)!.precio,
       }));
-
     await supabase.from('prana_pedido_items').insert(nuevosItems);
     await refetchPedidos();
-    toast({ title: '✏️ Pedido actualizado' });
+    toast({ title: 'Pedido actualizado ✅' });
     setSaving(false);
     setPedidoEditando(null);
   };
@@ -102,6 +105,45 @@ const HistorialPage = () => {
   return (
     <div className="container mx-auto px-4 py-8 max-w-2xl">
       <h1 className="font-display text-3xl font-bold mb-6 text-center">Mis pedidos</h1>
+
+      {/* Tarjeta de puntos */}
+      {misPedidos.length > 0 && (
+        <Card className="mb-6 border-primary/30 bg-primary/5">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Star className={`h-5 w-5 ${tier === 'Oro' ? 'text-yellow-500' : tier === 'Plata' ? 'text-slate-500' : 'text-primary'}`} />
+                <span className="font-bold text-lg">{puntos} puntos</span>
+                {tier && <Badge variant="outline" className={tier === 'Oro' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' : 'bg-slate-100 text-slate-700 border-slate-300'}>{tier}</Badge>}
+              </div>
+              {siguiente && (
+                <span className="text-xs text-muted-foreground">Faltan {siguiente - puntos} para {siguiente === 250 ? 'Plata' : 'Oro'}</span>
+              )}
+              {!siguiente && <span className="text-xs text-yellow-600 font-semibold">Nivel máximo</span>}
+            </div>
+            <div className="h-2 bg-background rounded-full overflow-hidden mb-3">
+              <div
+                className={`h-full rounded-full transition-all ${tier === 'Oro' ? 'bg-yellow-400' : tier === 'Plata' ? 'bg-slate-400' : 'bg-primary'}`}
+                style={{ width: `${Math.min(progreso, 100)}%` }}
+              />
+            </div>
+            <div className="text-xs text-muted-foreground space-y-1">
+              {puntos < 250 && config.beneficio_250 && (
+                <p><span className="font-semibold text-slate-600">Plata (250 pts):</span> {config.beneficio_250}</p>
+              )}
+              {puntos >= 250 && config.beneficio_250 && (
+                <p className="text-slate-600 line-through"><span className="font-semibold">Plata:</span> {config.beneficio_250}</p>
+              )}
+              {config.beneficio_500 && (
+                <p className={puntos >= 500 ? 'text-yellow-700 font-semibold' : ''}>
+                  <span className="font-semibold text-yellow-600">Oro (500 pts):</span> {config.beneficio_500}
+                </p>
+              )}
+              <p className="pt-1">Por cada vianda que comprás, sumás 1 punto.</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {misPedidos.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
