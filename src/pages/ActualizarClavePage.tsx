@@ -40,13 +40,18 @@ const ActualizarClavePage = () => {
       return;
     }
     setLoading(true);
-    const { error } = await supabase.auth.updateUser({ password });
-    setLoading(false);
-    if (error) {
-      toast({ title: 'Error al actualizar la contraseña', variant: 'destructive' });
-    } else {
-      toast({ title: 'Contraseña actualizada correctamente' });
-      navigate('/login');
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      setLoading(false);
+      if (error) {
+        toast({ title: error.message, variant: 'destructive' });
+      } else {
+        toast({ title: 'Contraseña actualizada correctamente' });
+        navigate('/login');
+      }
+    } catch (e: any) {
+      setLoading(false);
+      toast({ title: e?.message || 'Error desconocido', variant: 'destructive' });
     }
   };
 
