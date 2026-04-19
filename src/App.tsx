@@ -15,6 +15,7 @@ import NuevoPedidoPage from "./pages/NuevoPedidoPage";
 import HistorialPage from "./pages/HistorialPage";
 import AdminPage from "./pages/AdminPage";
 import SuperadminPage from "./pages/SuperadminPage";
+import ActualizarClavePage from "./pages/ActualizarClavePage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -83,6 +84,7 @@ const App = () => (
                   <SuperadminPage />
                 </ProtectedRoute>
               } />
+              <Route path="/actualizar-clave" element={<ActualizarClavePage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </AppProvider>
