@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
@@ -8,26 +8,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import logo from '@/assets/logo_cuchara.webp';
+import { useAuth } from '@/hooks/useAuth';
 
 const ActualizarClavePage = () => {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
-  const [ready, setReady] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) setReady(true);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session && (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN')) {
-        setReady(true);
-      }
-    });
-    return () => subscription.unsubscribe();
-  }, []);
+  const { session, loading: authLoading } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,9 +44,15 @@ const ActualizarClavePage = () => {
     }
   };
 
-  if (!ready) return (
+  if (authLoading) return (
     <div className="flex min-h-[80vh] items-center justify-center">
       <Loader2 className="h-8 w-8 animate-spin text-primary" />
+    </div>
+  );
+
+  if (!session) return (
+    <div className="flex min-h-[80vh] items-center justify-center px-4">
+      <p className="text-muted-foreground text-center">El link expiró. Pedí uno nuevo desde el login.</p>
     </div>
   );
 
