@@ -21,6 +21,12 @@ const ActualizarClavePage = () => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) setReady(true);
     });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session && (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN')) {
+        setReady(true);
+      }
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
