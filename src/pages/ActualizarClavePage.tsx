@@ -18,12 +18,9 @@ const ActualizarClavePage = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') {
-        setReady(true);
-      }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) setReady(true);
     });
-    return () => subscription.unsubscribe();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
