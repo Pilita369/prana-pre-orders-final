@@ -13,8 +13,8 @@ const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [resetLoading, setResetLoading] = useState(false);
-  const { login, resetPassword } = useAuth();
+  const [magicLoading, setMagicLoading] = useState(false);
+  const { login, sendMagicLink } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -53,18 +53,18 @@ const LoginPage = () => {
             <p className="text-center text-sm text-muted-foreground">
               <button
                 type="button"
-                disabled={resetLoading}
+                disabled={magicLoading}
                 onClick={async () => {
                   if (!email) { toast({ title: 'Ingresá tu email primero', variant: 'destructive' }); return; }
-                  setResetLoading(true);
-                  const { error } = await resetPassword(email);
-                  setResetLoading(false);
+                  setMagicLoading(true);
+                  const { error } = await sendMagicLink(email);
+                  setMagicLoading(false);
                   if (error) toast({ title: error, variant: 'destructive' });
-                  else toast({ title: 'Revisá tu email para recuperar la contraseña' });
+                  else toast({ title: 'Revisá tu email — te enviamos un link para entrar directo' });
                 }}
                 className="text-primary font-semibold hover:underline disabled:opacity-50"
               >
-                {resetLoading ? 'Enviando...' : '¿Olvidaste tu contraseña?'}
+                {magicLoading ? 'Enviando...' : '¿Olvidaste tu contraseña?'}
               </button>
             </p>
             <p className="text-center text-sm text-muted-foreground">

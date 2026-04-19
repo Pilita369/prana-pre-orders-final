@@ -14,6 +14,7 @@ interface AuthContextType {
   register: (data: { nombre: string; apellido: string; email: string; telefono?: string; password: string }) => Promise<{ error: string | null }>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: string | null }>;
+  sendMagicLink: (email: string) => Promise<{ error: string | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -120,6 +121,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return { error: null };
   };
 
+  const sendMagicLink = async (email: string) => {
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/` },
+    });
+    if (error) return { error: 'No se pudo enviar el link' };
+    return { error: null };
+  };
+
   const resetPassword = async (email: string) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/actualizar-clave`,
@@ -142,7 +152,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     <AuthContext.Provider value={{
       user, session, role, cliente, loading,
       isLoggedIn: !!session,
-      login, register, logout, resetPassword,
+      login, register, logout, resetPassword, sendMagicLink,
     }}>
       {children}
     </AuthContext.Provider>
